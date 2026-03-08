@@ -1,0 +1,811 @@
+{
+  "name": "core.leadgen.outreach",
+  "nodes": [
+    {
+      "id": "fa4ab309-0000-0000-0000-000000000000",
+      "name": "Wednesday 8AM \u2014 Outreach Day",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d54c7d38-0000-0000-0000-000000000000",
+      "name": "Client Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "name": "sender_name",
+              "type": "string",
+              "value": "CLIENT_NAME_HERE"
+            },
+            {
+              "name": "sender_company",
+              "type": "string",
+              "value": "CLIENT_COMPANY_HERE"
+            },
+            {
+              "name": "sender_title",
+              "type": "string",
+              "value": "CLIENT_TITLE_HERE"
+            },
+            {
+              "name": "calendly_link",
+              "type": "string",
+              "value": "CLIENT_CALENDLY_LINK_HERE"
+            },
+            {
+              "name": "value_prop",
+              "type": "string",
+              "value": "CLIENT_VALUE_PROP_HERE"
+            },
+            {
+              "name": "outreach_limit",
+              "type": "number",
+              "value": 15
+            },
+            {
+              "name": "follow_up_wait_days",
+              "type": "number",
+              "value": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2e167e09-0000-0000-0000-000000000000",
+      "name": "Get Researched Leads for Outreach",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GET_CONTACTS_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "config",
+              "value": "={{ { limit: $json.outreach_limit, filters: [{ propertyName: 'hs_lead_status', operator: 'EQ', value: 'Researched' }, { propertyName: 'outreach_sequence_status', operator: 'EQ', value: 'Not Started' }] } }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "70ac50b7-0000-0000-0000-000000000000",
+      "name": "Generate Personalized Email via Claude",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GENERATE_CONTENT_CLAUDE_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "model",
+              "value": "claude-sonnet-4-6"
+            },
+            {
+              "name": "max_tokens",
+              "value": 600
+            },
+            {
+              "name": "system_prompt",
+              "value": "You are a B2B outreach specialist writing personalized cold emails for a consulting firm. Write concise, value-first emails. No fluff. No buzzwords. Sound human, not automated. Never use the phrase 'I hope this email finds you well'."
+            },
+            {
+              "name": "user_prompt",
+              "value": "={{ 'Write a cold outreach email from ' + $('Client Config').item.json.sender_name + ' at ' + $('Client Config').item.json.sender_company + ' to ' + $json.full_name + ', ' + $json.title + ' at ' + $json.company + '.\\n\\nResearch context:\\n' + $json.research_notes + '\\n\\nBuying trigger: ' + ($json.buying_trigger || 'general operational efficiency interest') + '\\n\\nValue proposition: ' + $('Client Config').item.json.value_prop + '\\n\\nCalendly link: ' + $('Client Config').item.json.calendly_link + '\\n\\nRequirements:\\n- Subject line: compelling, under 8 words, no clickbait\\n- Body: 4\u20135 sentences max\\n- One specific hook from the research\\n- One clear CTA (15-min call or Calendly link)\\n- Sign off as ' + $('Client Config').item.json.sender_name + ', ' + $('Client Config').item.json.sender_title + '\\n\\nFormat output as JSON: { \"subject\": \"...\", \"body\": \"...\" }' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f16af1f7-0000-0000-0000-000000000000",
+      "name": "Parse Email JSON from Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const raw = $json.generated_content || '';\nlet parsed = { subject: 'Following up \u2014 automation for your team', body: raw };\n\ntry {\n  // Claude returns JSON \u2014 parse it\n  const jsonMatch = raw.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  // Fallback: use raw content as body\n}\n\nreturn [{\n  json: {\n    contact_id: $json.contact_id,\n    to: $json.email,\n    full_name: $json.full_name,\n    company: $json.company,\n    subject: parsed.subject,\n    body: parsed.body,\n    reply_to: $('Client Config').item.json.sender_email || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "2ba7c5cd-0000-0000-0000-000000000000",
+      "name": "Idempotency \u2014 Skip If Day0 Already Sent",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.outreach_day0_sent }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "6ea786cf-0000-0000-0000-000000000000",
+      "name": "Send Day 0 \u2014 Cold Outreach",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_SEND_EMAIL_GMAIL_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body }}"
+            },
+            {
+              "name": "reply_to",
+              "value": "={{ $json.reply_to }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "18cc18e2-0000-0000-0000-000000000000",
+      "name": "Mark Outreach Active in HubSpot",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_UPDATE_CONTACT_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "updates",
+              "value": "={{ { hs_lead_status: 'IN_PROGRESS', outreach_sequence_status: 'Day 0 Sent', outreach_day0_sent: true, outreach_day0_date: new Date().toISOString() } }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8666a710-0000-0000-0000-000000000000",
+      "name": "Wait 5 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        0
+      ],
+      "parameters": {
+        "amount": 5,
+        "unit": "days"
+      }
+    },
+    {
+      "id": "247b6132-0000-0000-0000-000000000000",
+      "name": "Check: Did Lead Reply?",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GET_CONTACTS_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "config",
+              "value": "={{ { limit: 1, filters: [{ propertyName: 'vid', operator: 'EQ', value: $json.contact_id }] } }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1eb7e36e-0000-0000-0000-000000000000",
+      "name": "Still No Reply at Day 5?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_status }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "IN_PROGRESS"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "e7e1eaad-0000-0000-0000-000000000000",
+      "name": "Generate Day 5 Follow-Up via Claude",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        2640,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GENERATE_CONTENT_CLAUDE_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "model",
+              "value": "claude-haiku-4-5"
+            },
+            {
+              "name": "max_tokens",
+              "value": 300
+            },
+            {
+              "name": "system_prompt",
+              "value": "You write brief, non-pushy B2B follow-up emails. 2-3 sentences max. Add a small new insight or value point. Never say 'just following up'."
+            },
+            {
+              "name": "user_prompt",
+              "value": "={{ 'Write a day-5 follow-up email from ' + $('Client Config').item.json.sender_name + ' to ' + $json.full_name + ' at ' + $json.company + '. Original email was about ' + $('Client Config').item.json.value_prop + '. Add one new data point or insight relevant to their industry (' + $json.industry + '). End with a gentle CTA. Format as JSON: { \"subject\": \"...\", \"body\": \"...\" }' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d80bb2ce-0000-0000-0000-000000000000",
+      "name": "Parse Day 5 Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const raw = $json.generated_content || '';\nlet parsed = { subject: 'Re: automation for ' + ($json.company || 'your team'), body: raw };\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) parsed = JSON.parse(m[0]);\n} catch(e) {}\nreturn [{ json: { ...$json, subject: parsed.subject, body: parsed.body } }];"
+      }
+    },
+    {
+      "id": "1d64d367-0000-0000-0000-000000000000",
+      "name": "Send Day 5 Follow-Up",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        3120,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_SEND_EMAIL_GMAIL_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "65cd8e97-0000-0000-0000-000000000000",
+      "name": "Mark Day 5 Sent in HubSpot",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        3360,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_UPDATE_CONTACT_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "updates",
+              "value": "={{ { outreach_sequence_status: 'Day 5 Sent', outreach_day5_sent: true } }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "0e31af70-0000-0000-0000-000000000000",
+      "name": "Wait 5 More Days (Day 10)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        3600,
+        0
+      ],
+      "parameters": {
+        "amount": 5,
+        "unit": "days"
+      }
+    },
+    {
+      "id": "46e76fb0-0000-0000-0000-000000000000",
+      "name": "Check: Reply Before Day 10?",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        3840,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GET_CONTACTS_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "config",
+              "value": "={{ { limit: 1, filters: [{ propertyName: 'vid', operator: 'EQ', value: $json.contact_id }] } }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ba250e85-0000-0000-0000-000000000000",
+      "name": "Still No Reply at Day 10?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_status }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "IN_PROGRESS"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ff0c5542-0000-0000-0000-000000000000",
+      "name": "Generate Day 10 Soft Close via Claude",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        4320,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GENERATE_CONTENT_CLAUDE_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "model",
+              "value": "claude-haiku-4-5"
+            },
+            {
+              "name": "max_tokens",
+              "value": 250
+            },
+            {
+              "name": "system_prompt",
+              "value": "Write a graceful soft-close email. 2 sentences. No pressure. Leave the door open. Professional and warm."
+            },
+            {
+              "name": "user_prompt",
+              "value": "={{ 'Write a soft-close email from ' + $('Client Config').item.json.sender_name + ' to ' + $json.full_name + ' at ' + $json.company + '. This is the last email in the sequence. Acknowledge timing may not be right. Leave door open for future. Format as JSON: { \"subject\": \"...\", \"body\": \"...\" }' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "13ce4a1a-0000-0000-0000-000000000000",
+      "name": "Parse Day 10 Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const raw = $json.generated_content || '';\nlet parsed = { subject: 'Closing the loop', body: raw };\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) parsed = JSON.parse(m[0]);\n} catch(e) {}\nreturn [{ json: { ...$json, subject: parsed.subject, body: parsed.body } }];"
+      }
+    },
+    {
+      "id": "76100c5c-0000-0000-0000-000000000000",
+      "name": "Send Day 10 Soft Close",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        4800,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_SEND_EMAIL_GMAIL_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3f6d73c7-0000-0000-0000-000000000000",
+      "name": "Mark Sequence Complete in HubSpot",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        5040,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_UPDATE_CONTACT_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "updates",
+              "value": "={{ { hs_lead_status: 'SEQUENCE_COMPLETE', outreach_sequence_status: 'Complete \u2014 No Reply', sequence_completed_at: new Date().toISOString() } }}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Wednesday 8AM \u2014 Outreach Day": {
+      "main": [
+        [
+          {
+            "node": "Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Config": {
+      "main": [
+        [
+          {
+            "node": "Get Researched Leads for Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Researched Leads for Outreach": {
+      "main": [
+        [
+          {
+            "node": "Generate Personalized Email via Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Personalized Email via Claude": {
+      "main": [
+        [
+          {
+            "node": "Parse Email JSON from Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email JSON from Claude": {
+      "main": [
+        [
+          {
+            "node": "Idempotency \u2014 Skip If Day0 Already Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idempotency \u2014 Skip If Day0 Already Sent": {
+      "main": [
+        [
+          {
+            "node": "Send Day 0 \u2014 Cold Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Send Day 0 \u2014 Cold Outreach": {
+      "main": [
+        [
+          {
+            "node": "Mark Outreach Active in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Outreach Active in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5 Days": {
+      "main": [
+        [
+          {
+            "node": "Check: Did Lead Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Did Lead Reply?": {
+      "main": [
+        [
+          {
+            "node": "Still No Reply at Day 5?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still No Reply at Day 5?": {
+      "main": [
+        [
+          {
+            "node": "Generate Day 5 Follow-Up via Claude",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Generate Day 5 Follow-Up via Claude": {
+      "main": [
+        [
+          {
+            "node": "Parse Day 5 Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Day 5 Email": {
+      "main": [
+        [
+          {
+            "node": "Send Day 5 Follow-Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Day 5 Follow-Up": {
+      "main": [
+        [
+          {
+            "node": "Mark Day 5 Sent in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Day 5 Sent in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 More Days (Day 10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5 More Days (Day 10)": {
+      "main": [
+        [
+          {
+            "node": "Check: Reply Before Day 10?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Reply Before Day 10?": {
+      "main": [
+        [
+          {
+            "node": "Still No Reply at Day 10?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still No Reply at Day 10?": {
+      "main": [
+        [
+          {
+            "node": "Generate Day 10 Soft Close via Claude",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Generate Day 10 Soft Close via Claude": {
+      "main": [
+        [
+          {
+            "node": "Parse Day 10 Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Day 10 Email": {
+      "main": [
+        [
+          {
+            "node": "Send Day 10 Soft Close",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Day 10 Soft Close": {
+      "main": [
+        [
+          {
+            "node": "Mark Sequence Complete in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ERROR_HANDLER_WORKFLOW_ID"
+  }
+}

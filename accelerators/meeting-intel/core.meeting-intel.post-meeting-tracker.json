@@ -1,0 +1,520 @@
+{
+  "name": "core.meeting-intel.post-meeting-tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-transcript",
+        "options": {}
+      },
+      "id": "71d4b943-d650-4736-ba1f-9ad57471162c",
+      "name": "Trigger: Webhook Transcript Completed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-3360, 112],
+      "webhookId": "meeting-transcript-webhook"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "a781c4da-de1c-4f6a-8759-68c275dc2b2f",
+      "name": "Trigger: Schedule Poll Every 30min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [-3360, 304]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "config_company_domain",
+              "value": "@yourcompany.com"
+            },
+            {
+              "name": "config_risk_alert_recipient",
+              "value": "account-owner@yourcompany.com"
+            },
+            {
+              "name": "config_source_tool",
+              "value": "fireflies"
+            },
+            {
+              "name": "config_output_target",
+              "value": "email"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-set-node-001",
+      "name": "Config: Client Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [-3088, 192],
+      "notes": "Layer 3 — edit these values per client. Do not modify nodes downstream of this point."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.transcript.get-transcript.fireflies",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "transcript_id": "={{ $json.transcript_id }}",
+            "source_tool": "={{ $json.config_source_tool }}"
+          }
+        }
+      },
+      "id": "09ad70b4-6c69-4f1f-9d83-e371abc74a13",
+      "name": "Adapter: Get Transcript",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [-2800, 192],
+      "onError": "continueErrorOutput",
+      "notes": "Swap adapter name here when client uses Fathom or Gong: adapter.transcript.get-transcript.fathom"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json;\nconst source = raw.source_tool || 'fireflies';\n\n// Normalize to standard schema regardless of source tool\nlet normalized = {};\n\nif (source === 'fireflies') {\n  const t = raw?.data?.transcript || raw;\n  normalized = {\n    transcript_id: t.id,\n    title: t.title,\n    date: t.date,\n    duration_minutes: Math.round((t.duration || 0) / 60),\n    attendees: (t.participants || []).map(p => ({ name: p.name, email: p.email })),\n    speakers: (t.sentences || []).map(s => ({ speaker: s.speaker_name, text: s.text })),\n    full_text: t.transcript || (t.sentences || []).map(s => s.speaker_name + ': ' + s.text).join('\\n'),\n    source_tool: 'fireflies',\n    source_url: t.meeting_link || ''\n  };\n} else if (source === 'gong') {\n  const c = raw?.call || raw;\n  normalized = {\n    transcript_id: c.id,\n    title: c.title,\n    date: c.started,\n    duration_minutes: Math.round((c.duration || 0) / 60),\n    attendees: (c.parties || []).map(p => ({ name: p.name, email: p.emailAddress })),\n    speakers: (c.transcript || []).flatMap(seg => (seg.sentences || []).map(s => ({ speaker: seg.speakerName, text: s.text }))),\n    full_text: (c.transcript || []).flatMap(seg => (seg.sentences || []).map(s => seg.speakerName + ': ' + s.text)).join('\\n'),\n    source_tool: 'gong',\n    source_url: c.url || ''\n  };\n} else if (source === 'fathom') {\n  const f = raw?.recording || raw;\n  normalized = {\n    transcript_id: f.id,\n    title: f.title,\n    date: f.created_at,\n    duration_minutes: f.duration_minutes || 0,\n    attendees: (f.attendees || []).map(p => ({ name: p.name, email: p.email })),\n    speakers: (f.transcript_lines || []).map(l => ({ speaker: l.speaker, text: l.text })),\n    full_text: (f.transcript_lines || []).map(l => l.speaker + ': ' + l.text).join('\\n'),\n    source_tool: 'fathom',\n    source_url: f.share_url || ''\n  };\n}\n\nreturn normalized;\n"
+      },
+      "id": "46e196cf-7c20-4568-9288-ab216887cd44",
+      "name": "Normalize to Standard Schema",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-2528, 192]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.crm.get-contacts.hubspot",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "attendees": "={{ $json.attendees }}"
+          }
+        }
+      },
+      "id": "85e95a90-9ce8-4021-b7e3-652a763d7c4d",
+      "name": "Adapter: Get CRM Contacts",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [-2240, 192],
+      "onError": "continueErrorOutput",
+      "notes": "Swap for adapter.crm.get-contacts.salesforce if client is on Salesforce"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.crm.get-contacts.hubspot",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "transcript_id": "={{ $json.transcript_id }}",
+            "lookup_type": "deduplication"
+          }
+        }
+      },
+      "id": "3dec6e21-6eeb-4633-8789-8f6e75d8414f",
+      "name": "Adapter: Deduplication Check",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [-1968, 192],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "dedup-condition",
+              "leftValue": "={{ $json.total }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9ef4370b-4263-4b3b-9742-a3864dcafacb",
+      "name": "Is New Transcript?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-1680, 192]
+    },
+    {
+      "parameters": {
+        "jsCode": "const transcript = $input.item.json;\n\n// Reduce token count: strip filler, timestamps, truncate to ~12k tokens\nlet text = transcript.full_text || '';\n\n// Remove common filler patterns\ntext = text\n  .replace(/\\b(um+|uh+|hmm+|like,?\\s+like|you know|sort of|kind of)\\b/gi, '')\n  .replace(/\\[silence\\]|\\[noise\\]|\\[crosstalk\\]|\\[inaudible\\]/gi, '')\n  .replace(/\\d{2}:\\d{2}:\\d{2}\\.\\d+/g, '')\n  .replace(/\\s{2,}/g, ' ')\n  .trim();\n\n// Truncate: keep first 8k + last 4k chars (~12k token approx)\nconst MAX = 48000; // ~12k tokens * 4 chars/token\nif (text.length > MAX) {\n  const head = text.slice(0, 32000);\n  const tail = text.slice(-16000);\n  text = head + '\\n\\n[... middle portion summarized for token efficiency ...]\\n\\n' + tail;\n}\n\nreturn {\n  ...transcript,\n  cleaned_text: text,\n  original_length: transcript.full_text?.length || 0,\n  cleaned_length: text.length\n};\n"
+      },
+      "id": "aeca335e-a8b5-477c-8171-cf24830ad4f8",
+      "name": "Pre-Process Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1408, 112]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "claude-sonnet-4-6"
+            },
+            {
+              "name": "max_tokens",
+              "value": 2048
+            },
+            {
+              "name": "system",
+              "value": "You are a meeting intelligence assistant. Analyze the provided meeting transcript and return a structured JSON object with the following fields:\n- summary (string): 3-5 sentence executive summary\n- action_items (array): each item has { owner, task, deadline_mentioned }\n- decisions (array of strings): key decisions made\n- commitments (array): each item has { who, what }\n- key_topics (array of strings)\n- themes (array of strings, e.g. 'competitive', 'pricing', 'renewal', 'technical-issue')\n- sentiment (string): 'positive', 'neutral', or 'negative'\n- open_questions (array of strings)\n\nReturn ONLY valid JSON with no markdown fencing or preamble."
+            },
+            {
+              "name": "messages",
+              "value": "=[{ \"role\": \"user\", \"content\": \"Meeting: {{ $json.title }}\\nDate: {{ $json.date }}\\nAttendees: {{ ($json.attendees || []).map(a => a.name).join(', ') }}\\n\\nTranscript:\\n{{ $json.cleaned_text }}\" }]"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "575efa2b-ef97-4b1a-b5d9-98003827a046",
+      "name": "Claude: AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-1120, 112],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput",
+      "notes": "Credential: Anthropic API key stored in n8n Credentials store. Header name: x-api-key"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\n\n// Extract text from Anthropic response\nconst rawText = response?.content?.[0]?.text || '';\n\nlet parsed = null;\ntry {\n  // Strip markdown code fences if present\n  const clean = rawText.replace(/```json\\n?|```/g, '').trim();\n  parsed = JSON.parse(clean);\n} catch (e) {\n  // Return with error flag for manual review\n  return {\n    ...$input.item.json,\n    ai_parse_error: true,\n    ai_raw_response: rawText,\n    summary: null,\n    action_items: [],\n    decisions: [],\n    commitments: [],\n    key_topics: [],\n    themes: [],\n    sentiment: 'unknown',\n    open_questions: []\n  };\n}\n\nreturn {\n  ...$input.item.json,\n  ai_parse_error: false,\n  summary: parsed.summary || '',\n  action_items: parsed.action_items || [],\n  decisions: parsed.decisions || [],\n  commitments: parsed.commitments || [],\n  key_topics: parsed.key_topics || [],\n  themes: parsed.themes || [],\n  sentiment: parsed.sentiment || 'neutral',\n  open_questions: parsed.open_questions || []\n};\n"
+      },
+      "id": "7f1990d3-cba1-4497-9c14-52ebabdde5cc",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-848, 112]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.email.get-thread.gmail",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "attendees": "={{ $json.attendees }}",
+            "meeting_date": "={{ $json.date }}",
+            "window_days": 7,
+            "company_domain": "={{ $json.config_company_domain }}"
+          }
+        }
+      },
+      "id": "a82fd2b8-6f55-4af1-be65-ef0b74f7f19a",
+      "name": "Adapter: Get Email Context",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [-560, 112],
+      "onError": "continueErrorOutput",
+      "notes": "Swap for adapter.email.get-thread.outlook if client is on Outlook. Graceful skip on failure — downstream code handles missing email_context."
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nconst emails = $input.all().filter(i => i.json.threadId).map(i => ({\n  subject: i.json.snippet ? i.json.snippet.slice(0, 200) : '',\n  date: i.json.internalDate ? new Date(parseInt(i.json.internalDate)).toISOString() : ''\n}));\n\nreturn {\n  ...data,\n  email_context: emails,\n  followup_status: emails.length > 0 ? 'email_context_found' : 'no_email_context'\n};\n"
+      },
+      "id": "aaa02010-cac3-4f43-bb9c-d69ca94b7779",
+      "name": "Merge Email Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-288, 112]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.crm.write-note.hubspot",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "transcript_id": "={{ $json.transcript_id }}",
+            "title": "={{ $json.title }}",
+            "date": "={{ $json.date }}",
+            "summary": "={{ $json.summary }}",
+            "action_items": "={{ $json.action_items }}",
+            "decisions": "={{ $json.decisions }}",
+            "themes": "={{ $json.themes }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "source_url": "={{ $json.source_url }}",
+            "attendees": "={{ $json.attendees }}"
+          }
+        }
+      },
+      "id": "29fc47b4-7b9f-404b-935c-161a9730e434",
+      "name": "Adapter: Write Meeting Record to CRM",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [0, 112],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput",
+      "notes": "Swap for adapter.crm.write-note.salesforce if client is on Salesforce"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "has-action-items",
+              "leftValue": "={{ $json.action_items?.length || 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ef18c420-3079-4a26-a00a-67c76caef0c3",
+      "name": "Has Action Items?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [288, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "risk-sentiment",
+              "leftValue": "={{ typeof $json.sentiment === 'object' ? ($json.sentiment?.label || '').toLowerCase() : ($json.sentiment || '').toLowerCase() }}",
+              "rightValue": "negative",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "risk-theme",
+              "leftValue": "={{ ($json.themes || []).includes('competitive') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "869b1070-00e9-47bc-9f18-08b0aa3eba5c",
+      "name": "Risk Signal?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [288, 208]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.email.send.gmail",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "to": "={{ $json.attendees.filter(a => a.email.includes($json.config_company_domain)).map(a => a.email).join(',') }}",
+            "subject": "=⚡ Action Items from: {{ $json.title }}",
+            "body": "=Hi team,\n\nHere are the action items extracted from today's meeting:\n\n**{{ $json.title }}**\n📅 {{ new Date($json.date).toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) }}\n\n**Action Items:**\n{{ ($json.action_items || []).map((a, i) => `${i+1}. **${a.owner || 'TBD'}**: ${a.task}${a.deadline_mentioned ? ' (by ' + a.deadline_mentioned + ')' : ''}`).join('\\n') }}\n\n**Summary:**\n{{ $json.summary }}\n\n🔗 View full transcript: {{ $json.source_url }}\n\n---\nDelivered by ANSA Meeting Intelligence"
+          }
+        }
+      },
+      "id": "105a5353-ba3d-4300-9c4b-14a7d8fd339b",
+      "name": "Adapter: Send Action Items Email",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [576, 0],
+      "onError": "continueErrorOutput",
+      "notes": "Swap for adapter.email.send.outlook if client is on Outlook"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.email.send.gmail",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "to": "={{ $json.config_risk_alert_recipient }}",
+            "subject": "=🚨 Risk Alert: {{ $json.title }}",
+            "body": "=⚠️ **Meeting Risk Signal Detected**\n\n**Meeting:** {{ $json.title }}\n**Date:** {{ new Date($json.date).toLocaleDateString() }}\n**Attendees:** {{ ($json.attendees || []).map(a => a.name).join(', ') }}\n\n**Risk Signals:**\n- Sentiment: {{ typeof $json.sentiment === 'object' ? JSON.stringify($json.sentiment) : $json.sentiment }}\n- Themes: {{ ($json.themes || []).join(', ') }}\n\n**Meeting Summary:**\n{{ $json.summary }}\n\n**Open Questions:**\n{{ ($json.open_questions || []).join('\\n') }}\n\n🔗 Full Transcript: {{ $json.source_url }}\n\n---\nDelivered by ANSA Meeting Intelligence"
+          }
+        }
+      },
+      "id": "9c3be09c-c8ee-45d3-a13a-0d7b46c3e3b0",
+      "name": "Adapter: Send Risk Alert Email",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [576, 208],
+      "onError": "continueErrorOutput",
+      "notes": "Swap for adapter.email.send.outlook if client is on Outlook"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "adapter.email.send.gmail",
+          "mode": "name"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "to": "={{ $json.attendees.filter(a => a.email.includes($json.config_company_domain)).map(a => a.email).join(',') }}",
+            "subject": "=📋 Meeting Summary: {{ $json.title }}",
+            "body": "=Hi team,\n\n**Meeting Summary: {{ $json.title }}**\n📅 {{ new Date($json.date).toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) }} · {{ $json.duration_minutes }} min\n👥 {{ ($json.attendees || []).map(a => a.name).join(', ') }}\n\n---\n\n**Summary**\n{{ $json.summary }}\n\n**Key Decisions**\n{{ ($json.decisions || []).length > 0 ? ($json.decisions || []).map((d, i) => `${i+1}. ${d}`).join('\\n') : 'No decisions recorded.' }}\n\n**Themes Discussed**\n{{ ($json.themes || []).join(' · ') }}\n\n**Sentiment:** {{ typeof $json.sentiment === 'object' ? ($json.sentiment?.label || JSON.stringify($json.sentiment)) : $json.sentiment }}\n\n🔗 Full Transcript: {{ $json.source_url }}\n\n---\n_Delivered within 15 minutes by ANSA Meeting Intelligence_"
+          }
+        }
+      },
+      "id": "5170d712-d491-4871-a65e-f0aa090ef172",
+      "name": "Adapter: Send Meeting Summary Email",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [576, 400],
+      "onError": "continueErrorOutput",
+      "notes": "Swap for adapter.email.send.outlook if client is on Outlook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst runId = $execution.id;\n\nconsole.log(JSON.stringify({\n  run_id: runId,\n  timestamp: new Date().toISOString(),\n  transcript_id: item.transcript_id,\n  source_tool: item.source_tool,\n  outcome: item.ai_parse_error ? 'processed_with_ai_error' : 'success',\n  steps: {\n    fetch: 'ok',\n    normalize: 'ok',\n    crm_lookup: item.company_id ? 'linked' : 'unlinked',\n    ai_processing: item.ai_parse_error ? 'parse_error' : 'ok',\n    email_enrichment: (item.email_context || []).length > 0 ? 'enriched' : 'skipped',\n    storage: 'ok'\n  },\n  action_items_count: (item.action_items || []).length,\n  themes: item.themes || [],\n  sentiment: item.sentiment\n}));\n\nreturn item;\n"
+      },
+      "id": "3e56e64c-fc18-4431-9496-16c67f7a7329",
+      "name": "Log Run Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [864, 208]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger: Webhook Transcript Completed": {
+      "main": [[{ "node": "Config: Client Settings", "type": "main", "index": 0 }]]
+    },
+    "Trigger: Schedule Poll Every 30min": {
+      "main": [[{ "node": "Config: Client Settings", "type": "main", "index": 0 }]]
+    },
+    "Config: Client Settings": {
+      "main": [[{ "node": "Adapter: Get Transcript", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Get Transcript": {
+      "main": [[{ "node": "Normalize to Standard Schema", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Standard Schema": {
+      "main": [[{ "node": "Adapter: Get CRM Contacts", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Get CRM Contacts": {
+      "main": [[{ "node": "Adapter: Deduplication Check", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Deduplication Check": {
+      "main": [[{ "node": "Is New Transcript?", "type": "main", "index": 0 }]]
+    },
+    "Is New Transcript?": {
+      "main": [[{ "node": "Pre-Process Transcript", "type": "main", "index": 0 }]]
+    },
+    "Pre-Process Transcript": {
+      "main": [[{ "node": "Claude: AI Analysis", "type": "main", "index": 0 }]]
+    },
+    "Claude: AI Analysis": {
+      "main": [[{ "node": "Parse AI Response", "type": "main", "index": 0 }]]
+    },
+    "Parse AI Response": {
+      "main": [[{ "node": "Adapter: Get Email Context", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Get Email Context": {
+      "main": [[{ "node": "Merge Email Context", "type": "main", "index": 0 }]]
+    },
+    "Merge Email Context": {
+      "main": [[{ "node": "Adapter: Write Meeting Record to CRM", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Write Meeting Record to CRM": {
+      "main": [
+        [
+          { "node": "Has Action Items?", "type": "main", "index": 0 },
+          { "node": "Risk Signal?", "type": "main", "index": 0 },
+          { "node": "Adapter: Send Meeting Summary Email", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Has Action Items?": {
+      "main": [[{ "node": "Adapter: Send Action Items Email", "type": "main", "index": 0 }]]
+    },
+    "Risk Signal?": {
+      "main": [[{ "node": "Adapter: Send Risk Alert Email", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Send Action Items Email": {
+      "main": [[{ "node": "Log Run Outcome", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Send Risk Alert Email": {
+      "main": [[{ "node": "Log Run Outcome", "type": "main", "index": 0 }]]
+    },
+    "Adapter: Send Meeting Summary Email": {
+      "main": [[{ "node": "Log Run Outcome", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "adapter.error.handler.global"
+  },
+  "meta": {
+    "instanceId": ""
+  },
+  "tags": [
+    { "name": "meeting-intel" },
+    { "name": "core" },
+    { "name": "hubspot" },
+    { "name": "fireflies" },
+    { "name": "gmail" },
+    { "name": "ai" }
+  ]
+}

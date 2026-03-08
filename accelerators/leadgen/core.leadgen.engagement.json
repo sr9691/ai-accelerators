@@ -1,0 +1,144 @@
+{
+  "name": "core.leadgen.engagement",
+  "nodes": [
+    {
+      "id": "fab0f298-0000-0000-0000-000000000000",
+      "name": "Thursday 8AM \u2014 Engagement Day",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a3d528a4-0000-0000-0000-000000000000",
+      "name": "Client Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "name": "recipient_email",
+              "type": "string",
+              "value": "CLIENT_EMAIL_HERE"
+            },
+            {
+              "name": "recipient_name",
+              "type": "string",
+              "value": "CLIENT_NAME_HERE"
+            },
+            {
+              "name": "icp_titles",
+              "type": "string",
+              "value": "COO, VP Operations, CFO, Director of Finance"
+            },
+            {
+              "name": "content_topics",
+              "type": "string",
+              "value": "AI automation, operational efficiency, digital transformation"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c5c3ae88-0000-0000-0000-000000000000",
+      "name": "Build Engagement Checklist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Client Config').item.json;\nconst today = new Date().toDateString();\n\nconst body = `Good morning ${config.recipient_name},\n\nThursday Engagement Checklist \u2014 ${today}\n\n\u2705 LINKEDIN ENGAGEMENT (15 min)\n   \u2022 Comment thoughtfully on 10\u201315 posts from ICP contacts\n     Target titles: ${config.icp_titles}\n   \u2022 Check connection request acceptances \u2014 send connect notes to accepted\n   \u2022 Reply to any DMs received this week\n   \u2022 Note anyone who liked or commented on your recent posts\n\n\u2705 WARM LEAD FOLLOW-UP\n   \u2022 Open HubSpot and filter by 'Last activity: this week'\n   \u2022 Send a personal note to anyone who opened an outreach email\n   \u2022 Move any 'CONNECTED' leads to next pipeline stage\n   \u2022 Log any conversations or signals as HubSpot notes\n\n\u2705 CONTENT\n   \u2022 Publish your Thursday LinkedIn post if scheduled\n   \u2022 Engage with posts using these topics: ${config.content_topics}\n\n\u2705 PIPELINE REVIEW PREP\n   \u2022 Tag any new buying signals discovered this week before Friday report\n   \u2022 Update hs_lead_status for any leads whose status has changed\n\n\u2014 LeadGen System`;\n\nreturn [{\n  json: {\n    to: config.recipient_email,\n    subject: '[LeadGen] Thursday Engagement Checklist',\n    body,\n    reply_to: config.recipient_email\n  }\n}];"
+      }
+    },
+    {
+      "id": "726a1849-0000-0000-0000-000000000000",
+      "name": "Send Engagement Checklist",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_SEND_EMAIL_GMAIL_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body }}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Thursday 8AM \u2014 Engagement Day": {
+      "main": [
+        [
+          {
+            "node": "Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Config": {
+      "main": [
+        [
+          {
+            "node": "Build Engagement Checklist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Engagement Checklist": {
+      "main": [
+        [
+          {
+            "node": "Send Engagement Checklist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ERROR_HANDLER_WORKFLOW_ID"
+  }
+}

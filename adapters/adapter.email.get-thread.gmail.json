@@ -1,0 +1,64 @@
+{
+  "name": "adapter.email.get-thread.gmail",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputsDefinition": {
+          "values": [
+            { "name": "attendees", "type": "array" },
+            { "name": "meeting_date", "type": "string" },
+            { "name": "window_days", "type": "number" },
+            { "name": "company_domain", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-001",
+      "name": "Trigger: Execute Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10,
+        "filters": {
+          "q": "=from:{{ $json.attendees.filter(a => !a.email.includes($json.company_domain)).map(a => a.email).join(' OR from:') }} after:{{ new Date(new Date($json.meeting_date).getTime() - ($json.window_days || 7)*24*60*60*1000).toISOString().split('T')[0].replace(/-/g,'/') }} before:{{ new Date(new Date($json.meeting_date).getTime() + ($json.window_days || 7)*24*60*60*1000).toISOString().split('T')[0].replace(/-/g,'/') }}"
+        }
+      },
+      "id": "gmail-001",
+      "name": "Gmail: Search Email Thread",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [-528, 0],
+      "onError": "continueErrorOutput",
+      "notes": "Credential: Gmail OAuth2 stored in n8n Credentials store. Graceful skip on error — downstream core logic handles missing email_context."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Gmail results to standard thread shape\nconst threads = $input.all().filter(i => i.json.threadId).map(i => ({\n  thread_id: i.json.threadId,\n  subject: i.json.snippet ? i.json.snippet.slice(0, 200) : '',\n  date: i.json.internalDate ? new Date(parseInt(i.json.internalDate)).toISOString() : ''\n}));\n\nreturn {\n  email_threads: threads,\n  thread_count: threads.length\n};\n"
+      },
+      "id": "output-001",
+      "name": "Output: Normalize Thread Shape",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-256, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger: Execute Workflow": {
+      "main": [[{ "node": "Gmail: Search Email Thread", "type": "main", "index": 0 }]]
+    },
+    "Gmail: Search Email Thread": {
+      "main": [[{ "node": "Output: Normalize Thread Shape", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "adapter.error.handler.global"
+  },
+  "meta": { "instanceId": "" },
+  "tags": [{ "name": "adapter" }, { "name": "email" }, { "name": "gmail" }]
+}

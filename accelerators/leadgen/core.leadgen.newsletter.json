@@ -1,0 +1,204 @@
+{
+  "name": "core.leadgen.newsletter",
+  "nodes": [
+    {
+      "id": "00df1861-0000-0000-0000-000000000000",
+      "name": "Monthly \u2014 1st of Month 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 1 * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "9d614349-0000-0000-0000-000000000000",
+      "name": "Client Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "name": "reviewer_email",
+              "type": "string",
+              "value": "CLIENT_EMAIL_HERE"
+            },
+            {
+              "name": "reviewer_name",
+              "type": "string",
+              "value": "CLIENT_NAME_HERE"
+            },
+            {
+              "name": "sender_name",
+              "type": "string",
+              "value": "CLIENT_NAME_HERE"
+            },
+            {
+              "name": "company_name",
+              "type": "string",
+              "value": "CLIENT_COMPANY_HERE"
+            },
+            {
+              "name": "company_tagline",
+              "type": "string",
+              "value": "CLIENT_COMPANY_TAGLINE_HERE"
+            },
+            {
+              "name": "target_audience",
+              "type": "string",
+              "value": "CLIENT_TARGET_AUDIENCE_HERE"
+            },
+            {
+              "name": "calendly_link",
+              "type": "string",
+              "value": "CLIENT_CALENDLY_LINK_HERE"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ec7d7999-0000-0000-0000-000000000000",
+      "name": "Generate Newsletter via Claude",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GENERATE_CONTENT_CLAUDE_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "model",
+              "value": "claude-sonnet-4-6"
+            },
+            {
+              "name": "max_tokens",
+              "value": 1200
+            },
+            {
+              "name": "system_prompt",
+              "value": "You write monthly nurture newsletters for B2B consulting firms. Conversational, insightful, not salesy. 3-minute read max. No bullet-point spam. Write like a trusted advisor, not a marketer."
+            },
+            {
+              "name": "user_prompt",
+              "value": "={{ 'Write a monthly nurture newsletter for ' + $json.company_name + ' (' + $json.company_tagline + ').\\n\\nSender: ' + $json.sender_name + '\\nAudience: ' + $json.target_audience + '\\nCTA calendly: ' + $json.calendly_link + '\\nMonth: ' + new Date().toLocaleString(\\'default\\', { month: \\'long\\', year: \\'numeric\\' }) + '\\n\\nStructure:\\n1. One AI/automation insight relevant to the audience this month\\n2. One practical tip they can implement this week\\n3. One realistic case study outcome (50\u2013500 employee company)\\n4. One thought-provoking question\\n5. Soft CTA to reply or book 20 minutes\\n\\nSign as ' + $json.sender_name + ', ' + $json.company_name + '.' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "42bfd9a6-0000-0000-0000-000000000000",
+      "name": "Format Newsletter for Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Client Config').item.json;\nconst newsletter = $json.generated_content || 'Newsletter generation failed \u2014 please create manually.';\nconst month = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });\n\nreturn [{\n  json: {\n    to: config.reviewer_email,\n    subject: `[REVIEW NEEDED] ${config.company_name} Newsletter \u2014 ${month}`,\n    body: `Hi ${config.reviewer_name},\n\nYour monthly newsletter draft is ready for review.\n\nPlease review, edit as needed, then send to your list.\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nDRAFT NEWSLETTER:\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n${newsletter}\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nGenerated: ${new Date().toISOString()}\n\n\u2014 LeadGen System`\n  }\n}];"
+      }
+    },
+    {
+      "id": "9ff0d428-0000-0000-0000-000000000000",
+      "name": "Send Newsletter Draft for Review",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_SEND_EMAIL_GMAIL_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body }}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Monthly \u2014 1st of Month 9AM": {
+      "main": [
+        [
+          {
+            "node": "Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Config": {
+      "main": [
+        [
+          {
+            "node": "Generate Newsletter via Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Newsletter via Claude": {
+      "main": [
+        [
+          {
+            "node": "Format Newsletter for Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Newsletter for Review": {
+      "main": [
+        [
+          {
+            "node": "Send Newsletter Draft for Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ERROR_HANDLER_WORKFLOW_ID"
+  }
+}

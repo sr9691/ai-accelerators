@@ -1,0 +1,61 @@
+{
+  "name": "adapter.crm.get-contacts.hubspot",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputsDefinition": {
+          "values": [
+            { "name": "attendees", "type": "array" },
+            { "name": "transcript_id", "type": "string" },
+            { "name": "lookup_type", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-001",
+      "name": "Trigger: Execute Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "search",
+        "additionalFields": {}
+      },
+      "id": "hubspot-001",
+      "name": "HubSpot: Search Contacts by Email",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [-528, 0],
+      "onError": "continueErrorOutput",
+      "notes": "Credential: HubSpot OAuth2 stored in n8n Credentials store. Loops per attendee — connect SplitInBatches upstream for multi-attendee support."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize HubSpot contact response to standard schema\nconst results = $input.all().map(i => i.json);\n\n// Return normalized shape expected by core workflow\nreturn {\n  contacts: results,\n  total: results.length,\n  lookup_type: $input.first()?.json?.lookup_type || 'contacts'\n};\n"
+      },
+      "id": "output-001",
+      "name": "Output: Normalize Contact Shape",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-256, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger: Execute Workflow": {
+      "main": [[{ "node": "HubSpot: Search Contacts by Email", "type": "main", "index": 0 }]]
+    },
+    "HubSpot: Search Contacts by Email": {
+      "main": [[{ "node": "Output: Normalize Contact Shape", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "adapter.error.handler.global"
+  },
+  "meta": { "instanceId": "" },
+  "tags": [{ "name": "adapter" }, { "name": "crm" }, { "name": "hubspot" }]
+}

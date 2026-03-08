@@ -1,0 +1,83 @@
+{
+  "name": "adapter.crm.write-note.hubspot",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputsDefinition": {
+          "values": [
+            { "name": "transcript_id", "type": "string" },
+            { "name": "title", "type": "string" },
+            { "name": "date", "type": "string" },
+            { "name": "summary", "type": "string" },
+            { "name": "action_items", "type": "array" },
+            { "name": "decisions", "type": "array" },
+            { "name": "themes", "type": "array" },
+            { "name": "sentiment", "type": "string" },
+            { "name": "source_url", "type": "string" },
+            { "name": "attendees", "type": "array" }
+          ]
+        }
+      },
+      "id": "trigger-001",
+      "name": "Trigger: Execute Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build HubSpot engagement note body from normalized meeting data\nconst d = $input.item.json;\n\nconst actionItemsText = (d.action_items || []).length > 0\n  ? (d.action_items || []).map((a, i) => `${i+1}. ${a.owner || 'TBD'}: ${a.task}${a.deadline_mentioned ? ' (by ' + a.deadline_mentioned + ')' : ''}`).join('\\n')\n  : 'None recorded';\n\nconst decisionsText = (d.decisions || []).length > 0\n  ? (d.decisions || []).map((dec, i) => `${i+1}. ${dec}`).join('\\n')\n  : 'None recorded';\n\nconst noteBody = `[Meeting Intelligence — Auto-generated]\\n\\nMeeting: ${d.title}\\nDate: ${d.date}\\nDuration: ${d.duration_minutes || 'N/A'} min\\nSentiment: ${d.sentiment}\\nThemes: ${(d.themes || []).join(', ')}\\n\\nSUMMARY\\n${d.summary}\\n\\nACTION ITEMS\\n${actionItemsText}\\n\\nDECISIONS\\n${decisionsText}\\n\\nTranscript: ${d.source_url}`;\n\nreturn {\n  ...d,\n  hubspot_note_body: noteBody\n};\n"
+      },
+      "id": "build-note-001",
+      "name": "Build Note Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-528, 0]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "object"
+      },
+      "id": "hubspot-001",
+      "name": "HubSpot: Create Engagement Note",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [-256, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput",
+      "notes": "Credential: HubSpot OAuth2 stored in n8n Credentials store."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return confirmation shape\nreturn {\n  crm_write_status: 'ok',\n  crm_record_id: $input.item.json?.id || null\n};\n"
+      },
+      "id": "output-001",
+      "name": "Output: Write Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger: Execute Workflow": {
+      "main": [[{ "node": "Build Note Body", "type": "main", "index": 0 }]]
+    },
+    "Build Note Body": {
+      "main": [[{ "node": "HubSpot: Create Engagement Note", "type": "main", "index": 0 }]]
+    },
+    "HubSpot: Create Engagement Note": {
+      "main": [[{ "node": "Output: Write Confirmation", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "adapter.error.handler.global"
+  },
+  "meta": { "instanceId": "" },
+  "tags": [{ "name": "adapter" }, { "name": "crm" }, { "name": "hubspot" }]
+}

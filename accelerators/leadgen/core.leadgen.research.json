@@ -1,0 +1,226 @@
+{
+  "name": "core.leadgen.research",
+  "nodes": [
+    {
+      "id": "902139ca-0000-0000-0000-000000000000",
+      "name": "Tuesday 8AM \u2014 Research Day",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "91d88224-0000-0000-0000-000000000000",
+      "name": "Client Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "name": "recipient_email",
+              "type": "string",
+              "value": "CLIENT_EMAIL_HERE"
+            },
+            {
+              "name": "recipient_name",
+              "type": "string",
+              "value": "CLIENT_NAME_HERE"
+            },
+            {
+              "name": "research_batch_limit",
+              "type": "number",
+              "value": 10
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "95e36b02-0000-0000-0000-000000000000",
+      "name": "Get Leads Needing Research",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GET_CONTACTS_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "config",
+              "value": "={{ { limit: $json.research_batch_limit, filters: [{ propertyName: 'hs_lead_status', operator: 'EQ', value: 'Prospect Identified' }, { propertyName: 'research_notes', operator: 'NOT_HAS_PROPERTY', value: '' }] } }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ee640f34-0000-0000-0000-000000000000",
+      "name": "Research Each Prospect via Perplexity",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_RESEARCH_PERPLEXITY_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "full_name",
+              "value": "={{ $json.full_name }}"
+            },
+            {
+              "name": "company",
+              "value": "={{ $json.company }}"
+            },
+            {
+              "name": "industry",
+              "value": "={{ $json.industry }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1b950df0-0000-0000-0000-000000000000",
+      "name": "Idempotency \u2014 Skip If Already Researched",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.research_notes }}",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "3dafa56b-0000-0000-0000-000000000000",
+      "name": "Save Research to HubSpot",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_UPDATE_CONTACT_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "updates",
+              "value": "={{ { research_notes: $json.research_notes, hs_lead_status: 'Researched', research_completed_at: $json.research_completed_at } }}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Tuesday 8AM \u2014 Research Day": {
+      "main": [
+        [
+          {
+            "node": "Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Config": {
+      "main": [
+        [
+          {
+            "node": "Get Leads Needing Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Leads Needing Research": {
+      "main": [
+        [
+          {
+            "node": "Research Each Prospect via Perplexity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Each Prospect via Perplexity": {
+      "main": [
+        [
+          {
+            "node": "Idempotency \u2014 Skip If Already Researched",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idempotency \u2014 Skip If Already Researched": {
+      "main": [
+        [
+          {
+            "node": "Save Research to HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ERROR_HANDLER_WORKFLOW_ID"
+  }
+}

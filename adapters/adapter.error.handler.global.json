@@ -1,0 +1,78 @@
+{
+  "name": "adapter.error.handler.global",
+  "nodes": [
+    {
+      "id": "be64bb18-0000-0000-0000-000000000000",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b5c175c0-0000-0000-0000-000000000000",
+      "name": "Format Error Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const err = $input.item.json;\nconst ts = new Date().toISOString();\n\nreturn [{\n  json: {\n    slack_message: `\u26a0\ufe0f *ANSA LeadGen Error*\\n*Workflow:* ${err.workflow?.name || 'Unknown'}\\n*Node:* ${err.execution?.lastNodeExecuted || 'Unknown'}\\n*Error:* ${err.execution?.error?.message || 'Unknown error'}\\n*Time:* ${ts}`,\n    hubspot_note: `LeadGen workflow error at ${ts}: ${err.execution?.error?.message || 'Unknown'}`,\n    workflow_name: err.workflow?.name || 'Unknown',\n    error_message: err.execution?.error?.message || 'Unknown error',\n    timestamp: ts\n  }\n}];"
+      }
+    },
+    {
+      "id": "e15004f2-0000-0000-0000-000000000000",
+      "name": "Slack: Alert ANSA Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "operation": "message",
+        "channel": "#client-alerts",
+        "text": "={{ $json.slack_message }}",
+        "otherOptions": {}
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "ANSA_SLACK_CREDENTIAL_ID",
+          "name": "ANSA Slack"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Alert": {
+      "main": [
+        [
+          {
+            "node": "Slack: Alert ANSA Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

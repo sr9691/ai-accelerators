@@ -1,0 +1,74 @@
+{
+  "name": "adapter.transcript.get-transcript.fireflies",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputsDefinition": {
+          "values": [
+            { "name": "transcript_id", "type": "string" },
+            { "name": "source_tool", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-001",
+      "name": "Trigger: Execute Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.fireflies.ai/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={ \"query\": \"{ transcript(id: \\\"{{ $json.transcript_id }}\\\") { id title date duration participants { name email } sentences { speaker_name text } transcript meeting_link } }\" }"
+            }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "fetch-001",
+      "name": "Fireflies: Fetch Transcript",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-528, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput",
+      "notes": "Credential: Fireflies API key stored in n8n Credentials store. Header name: Authorization, value: Bearer {key}"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pass through Fireflies raw response — normalization happens in core workflow\nconst data = $input.item.json;\nreturn {\n  ...data,\n  source_tool: 'fireflies'\n};\n"
+      },
+      "id": "output-001",
+      "name": "Output: Normalize Output Shape",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-256, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger: Execute Workflow": {
+      "main": [[{ "node": "Fireflies: Fetch Transcript", "type": "main", "index": 0 }]]
+    },
+    "Fireflies: Fetch Transcript": {
+      "main": [[{ "node": "Output: Normalize Output Shape", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "adapter.error.handler.global"
+  },
+  "meta": { "instanceId": "" },
+  "tags": [{ "name": "adapter" }, { "name": "transcript" }, { "name": "fireflies" }]
+}

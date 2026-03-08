@@ -1,0 +1,98 @@
+{
+  "name": "adapter.ai.generate-content.claude",
+  "nodes": [
+    {
+      "id": "ad0bd6e0-0000-0000-0000-000000000000",
+      "name": "Workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "226d7376-0000-0000-0000-000000000000",
+      "name": "Claude API: Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"model\": \"{{ $json.model || 'claude-sonnet-4-6' }}\",\n  \"max_tokens\": {{ $json.max_tokens || 1000 }},\n  \"system\": \"{{ $json.system_prompt }}\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"{{ $json.user_prompt }}\" }]\n}",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxTries": 3
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CLIENT_ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic API (Client)"
+        }
+      }
+    },
+    {
+      "id": "b267b4a8-0000-0000-0000-000000000000",
+      "name": "Extract Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\nconst inputCtx = $('Workflow Input').item.json;\nconst content = response.content?.[0]?.text || 'Content generation failed.';\n\nreturn [{\n  json: {\n    ...inputCtx,\n    generated_content: content,\n    generated_at: new Date().toISOString(),\n    model_used: response.model || 'claude-sonnet-4-6'\n  }\n}];"
+      }
+    }
+  ],
+  "connections": {
+    "Workflow Input": {
+      "main": [
+        [
+          {
+            "node": "Claude API: Generate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API: Generate Content": {
+      "main": [
+        [
+          {
+            "node": "Extract Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

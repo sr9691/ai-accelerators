@@ -1,0 +1,82 @@
+{
+  "name": "adapter.crm.update-contact.hubspot",
+  "nodes": [
+    {
+      "id": "aaab46fc-0000-0000-0000-000000000000",
+      "name": "Workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "598378f8-0000-0000-0000-000000000000",
+      "name": "HubSpot: Update Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "contact",
+        "operation": "update",
+        "contactId": "={{ $json.contact_id }}",
+        "updateFields": "={{ $json.updates }}"
+      },
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "CLIENT_HUBSPOT_CREDENTIAL_ID",
+          "name": "HubSpot (Client)"
+        }
+      }
+    },
+    {
+      "id": "a9d1fc9a-0000-0000-0000-000000000000",
+      "name": "Pass Through Contact ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "mode": "keepAllExcept",
+        "fields": {
+          "values": []
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Workflow Input": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Update Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Update Contact": {
+      "main": [
+        [
+          {
+            "node": "Pass Through Contact ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "name": "adapter.ai.research-prospect.perplexity",
+  "nodes": [
+    {
+      "id": "fa19edab-0000-0000-0000-000000000000",
+      "name": "Workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "f57e5294-0000-0000-0000-000000000000",
+      "name": "Perplexity: Research Prospect",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.perplexity.ai/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"model\": \"sonar-pro\",\n  \"max_tokens\": 800,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a B2B sales research assistant. Provide concise, factual intelligence about companies for sales prospecting. Focus on operational pain points, AI readiness, and buying signals. Keep responses under 400 words total.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Research for prospect \" + $json.full_name + \" at \" + $json.company + \" (\" + $json.industry + \"):\\n\\n1. COMPANY OVERVIEW: What does \" + $json.company + \" do? Revenue estimates, headcount, recent news, known operational challenges, leadership changes?\\n\\n2. PAIN POINTS: Most common operational/process inefficiencies in this industry that AI automation could solve?\\n\\n3. AI READINESS: Any signals \" + $json.company + \" is investing in AI or automation (job postings, press releases, tech stack)?\\n\\n4. PERSONALIZATION HOOK: One specific recent event or detail about \" + $json.company + \" to open an outreach email naturally.\\n\\nUse clear section headers.\"\n    }\n  ]\n}",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxTries": 3
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CLIENT_PERPLEXITY_CREDENTIAL_ID",
+          "name": "Perplexity API (Client)"
+        }
+      }
+    },
+    {
+      "id": "18eebc27-0000-0000-0000-000000000000",
+      "name": "Extract & Normalize Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Extract Perplexity response and merge with input contact data\nconst response = $input.item.json;\nconst research = response.choices?.[0]?.message?.content || 'Research unavailable';\n\n// Carry contact context forward (passed through from calling workflow)\nconst contactCtx = $('Workflow Input').item.json;\n\nreturn [{\n  json: {\n    contact_id: contactCtx.contact_id,\n    full_name: contactCtx.full_name,\n    company: contactCtx.company,\n    research_notes: research,\n    research_completed_at: new Date().toISOString()\n  }\n}];"
+      }
+    }
+  ],
+  "connections": {
+    "Workflow Input": {
+      "main": [
+        [
+          {
+            "node": "Perplexity: Research Prospect",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity: Research Prospect": {
+      "main": [
+        [
+          {
+            "node": "Extract & Normalize Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

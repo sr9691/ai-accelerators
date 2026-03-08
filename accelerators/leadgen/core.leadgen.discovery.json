@@ -1,0 +1,215 @@
+{
+  "name": "core.leadgen.discovery",
+  "nodes": [
+    {
+      "id": "27f22f37-0000-0000-0000-000000000000",
+      "name": "Monday 8AM \u2014 Weekly Kickoff",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "14f5c3fd-0000-0000-0000-000000000000",
+      "name": "Client Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "name": "recipient_email",
+              "type": "string",
+              "value": "CLIENT_EMAIL_HERE"
+            },
+            {
+              "name": "recipient_name",
+              "type": "string",
+              "value": "CLIENT_NAME_HERE"
+            },
+            {
+              "name": "company_name",
+              "type": "string",
+              "value": "CLIENT_COMPANY_HERE"
+            },
+            {
+              "name": "icp_description",
+              "type": "string",
+              "value": "CLIENT_ICP_DESCRIPTION_HERE"
+            },
+            {
+              "name": "discovery_limit",
+              "type": "number",
+              "value": 30
+            },
+            {
+              "name": "discovery_filter_status",
+              "type": "string",
+              "value": "Prospect Identified"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "be632385-0000-0000-0000-000000000000",
+      "name": "Get Unworked Leads",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_GET_CONTACTS_HUBSPOT_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "config",
+              "value": "={{ { limit: $json.discovery_limit, filters: [{ propertyName: 'hs_lead_status', operator: 'EQ', value: $json.discovery_filter_status }] } }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d947ee74-0000-0000-0000-000000000000",
+      "name": "Idempotency Check \u2014 Already Sent Today?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Idempotency: prevent duplicate Monday digest emails\n// Check if this workflow already ran today by inspecting last execution\n// In production, write a 'last_run_date' to HubSpot or a Google Sheet\nconst contacts = $input.all();\nconst today = new Date().toISOString().split('T')[0];\nconst config = $('Client Config').item.json;\n\n// Pass contacts and config forward with today's date stamp\nreturn [{\n  json: {\n    leads: contacts.map(c => c.json),\n    lead_count: contacts.length,\n    run_date: today,\n    recipient_email: config.recipient_email,\n    recipient_name: config.recipient_name,\n    company_name: config.company_name\n  }\n}];"
+      }
+    },
+    {
+      "id": "4c290f6b-0000-0000-0000-000000000000",
+      "name": "Format Discovery Digest Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const { leads, lead_count, run_date, recipient_email, recipient_name, company_name } = $json;\n\nconst topLeads = leads.slice(0, 10).map((c, i) =>\n  `${i + 1}. ${c.full_name || 'Unknown'} \u2014 ${c.title || 'Unknown Title'} @ ${c.company || 'Unknown Co'}`\n).join('\\n');\n\nconst body = `Good morning ${recipient_name},\n\nYour Monday lead discovery run is complete.\n\nLeads in 'Prospect Identified' stage: ${lead_count}\n\nTop leads to review today:\n${topLeads}\n\nThis week's action items:\n\u2022 Review each profile and qualify against ICP criteria\n\u2022 Score any new leads manually added this week  \n\u2022 Confirm target of 20\u201330 in weekly intake list before Tuesday research run\n\u2022 Tag buying triggers on any leads you qualify\n\nRun date: ${run_date}\n\n\u2014 ${company_name} LeadGen System`;\n\nreturn [{\n  json: {\n    to: recipient_email,\n    subject: `[LeadGen] Monday Discovery \u2014 ${lead_count} leads ready for research`,\n    body,\n    reply_to: recipient_email\n  }\n}];"
+      }
+    },
+    {
+      "id": "4a226c5c-0000-0000-0000-000000000000",
+      "name": "Send Discovery Digest",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "workflowId": "ADAPTER_SEND_EMAIL_GMAIL_ID",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body }}"
+            },
+            {
+              "name": "reply_to",
+              "value": "={{ $json.reply_to }}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Monday 8AM \u2014 Weekly Kickoff": {
+      "main": [
+        [
+          {
+            "node": "Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Config": {
+      "main": [
+        [
+          {
+            "node": "Get Unworked Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Unworked Leads": {
+      "main": [
+        [
+          {
+            "node": "Idempotency Check \u2014 Already Sent Today?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idempotency Check \u2014 Already Sent Today?": {
+      "main": [
+        [
+          {
+            "node": "Format Discovery Digest Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Discovery Digest Email": {
+      "main": [
+        [
+          {
+            "node": "Send Discovery Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ERROR_HANDLER_WORKFLOW_ID"
+  }
+}

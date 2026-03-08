@@ -1,0 +1,62 @@
+{
+  "name": "adapter.email.send.gmail",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputsDefinition": {
+          "values": [
+            { "name": "to", "type": "string" },
+            { "name": "subject", "type": "string" },
+            { "name": "body", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-001",
+      "name": "Trigger: Execute Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "gmail-001",
+      "name": "Gmail: Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [-528, 0],
+      "onError": "continueErrorOutput",
+      "notes": "Credential: Gmail OAuth2 stored in n8n Credentials store."
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  email_send_status: $input.item.json?.id ? 'sent' : 'failed',\n  email_message_id: $input.item.json?.id || null\n};\n"
+      },
+      "id": "output-001",
+      "name": "Output: Send Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-256, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger: Execute Workflow": {
+      "main": [[{ "node": "Gmail: Send Email", "type": "main", "index": 0 }]]
+    },
+    "Gmail: Send Email": {
+      "main": [[{ "node": "Output: Send Confirmation", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "adapter.error.handler.global"
+  },
+  "meta": { "instanceId": "" },
+  "tags": [{ "name": "adapter" }, { "name": "email" }, { "name": "gmail" }]
+}
